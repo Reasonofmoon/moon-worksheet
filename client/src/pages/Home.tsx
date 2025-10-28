@@ -31,7 +31,7 @@ export default function Home() {
     return sentences.map((s) => s.trim()).filter((s) => s.length > 0);
   };
 
-  // 빈칸 채우기 생성
+  // 빈칸 채우기 생성 (개선된 버전)
   const createFillInTheBlanks = (
     sentence: string
   ): { text: string; wordList: string } => {
@@ -39,10 +39,11 @@ export default function Home() {
     const result: string[] = [];
     const blankedWords: string[] = [];
 
+    // 모든 단어 중 일부를 빈칸으로 처리 (3개 단어마다 1개 빈칸)
     words.forEach((word, index) => {
       const cleanedWord = word.replace(/[.,?!;]/g, '');
-      if ((index + 1) % 4 === 0 && cleanedWord.length > 3) {
-        result.push(`<span class="blank">${word}</span>`);
+      if (index % 3 === 2 && cleanedWord.length > 2) {
+        result.push(`<span class="blank">_____</span>`);
         blankedWords.push(cleanedWord);
       } else {
         result.push(word);
@@ -51,7 +52,7 @@ export default function Home() {
 
     return {
       text: result.join(' '),
-      wordList: blankedWords.join(', '),
+      wordList: blankedWords.length > 0 ? blankedWords.join(', ') : '(빈칸 없음)',
     };
   };
 
@@ -97,9 +98,9 @@ export default function Home() {
       case 'fill-in':
         const fillInData = createFillInTheBlanks(englishSentence);
         content = `
-          <div class="english-text">${fillInData.text}</div>
+          <div class="english-text" style="line-height: 2;">${fillInData.text}</div>
           <div class="analysis-label">빈칸 채우기</div>
-          <div class="korean-space" style="min-height: 10mm;"></div>
+          <div class="korean-space" style="min-height: 12mm;"></div>
           <div class="word-list">**힌트 단어:** ${fillInData.wordList}</div>
         `;
         break;
@@ -113,9 +114,11 @@ export default function Home() {
         break;
       case 'korean-only':
         content = `
-          <div class="korean-text">${escapeHtml(koreanTranslation || '한국어 번역 없음')}</div>
-          <div class="analysis-label">영작하기 (아래 한글 번역을 보고 영어 문장을 작성하세요)</div>
-          <div class="english-composition-space"></div>
+          <div class="korean-text" style="margin-bottom: 8mm;">${escapeHtml(koreanTranslation || '한국어 번역 없음')}</div>
+          <div class="analysis-label">영작하기</div>
+          <div class="english-composition-container">
+            <div class="english-composition-space"></div>
+          </div>
         `;
         break;
     }
@@ -371,7 +374,7 @@ export default function Home() {
         .sentence-block {
           page-break-inside: avoid;
           break-inside: avoid-column;
-          margin-bottom: 8mm;
+          margin-bottom: 10mm;
           padding-bottom: 3mm;
           border-bottom: 1px dashed #eee;
         }
@@ -468,10 +471,17 @@ export default function Home() {
           padding: 5mm;
           border-left: 3px solid var(--primary-color);
         }
+        .template-korean-only .english-composition-container {
+          background-color: #f9f9f9;
+          border: 1px solid #ddd;
+          border-radius: 3px;
+          padding: 5mm;
+          margin-bottom: 2mm;
+        }
         .template-korean-only .english-composition-space {
           border-bottom: 1px solid #999;
-          min-height: 30mm;
-          margin-bottom: 2mm;
+          min-height: 35mm;
+          margin-bottom: 0;
         }
 
         .korean-reference {
@@ -680,7 +690,7 @@ export default function Home() {
 
           {worksheetHTML && (
             <div
-              className="worksheet template-translation"
+              className={`worksheet template-${templateType}`}
               dangerouslySetInnerHTML={{
                 __html: worksheetHTML,
               }}
