@@ -9,6 +9,14 @@ interface Message {
   text: string;
 }
 
+interface AIProvider {
+  id: string;
+  name: string;
+  description: string;
+  endpoint?: string;
+  model?: string;
+}
+
 export default function Home() {
   const [title, setTitle] = useState('영어 독해 및 번역 연습');
   const [subtitle, setSubtitle] = useState('');
@@ -19,6 +27,122 @@ export default function Home() {
   const [worksheetHTML, setWorksheetHTML] = useState('');
   const [message, setMessage] = useState<Message | null>(null);
   const [printDisabled, setPrintDisabled] = useState(true);
+  const [selectedAI, setSelectedAI] = useState('none');
+  const [apiKey, setApiKey] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const aiProviders: AIProvider[] = [
+    { id: 'none', name: 'AI 사용 안 함', description: '' },
+    { id: 'openai-gpt5', name: 'OpenAI GPT-5', description: '최고 성능', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-5' },
+    { id: 'openai-gpt5-mini', name: 'OpenAI GPT-5 mini', description: '빠르고 효율적', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-5-mini' },
+    { id: 'openai-gpt5-nano', name: 'OpenAI GPT-5 nano', description: '가장 빠름', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-5-nano' },
+    { id: 'openai-gpt5-pro', name: 'OpenAI GPT-5 pro', description: '가장 정확함', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-5-pro' },
+    { id: 'openai-gpt4.1', name: 'OpenAI GPT-4.1', description: '추론 제외 최고 모델', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4.1' },
+    { id: 'gemini-2.5-pro', name: 'Google Gemini 2.5 Pro', description: '최고 성능', endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent', model: 'gemini-2.5-pro' },
+    { id: 'gemini-2.5-flash', name: 'Google Gemini 2.5 Flash', description: '균형잡힌 성능', endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', model: 'gemini-2.5-flash' },
+    { id: 'gemini-2.5-flash-lite', name: 'Google Gemini 2.5 Flash Lite', description: '가장 빠름', endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent', model: 'gemini-2.5-flash-lite' },
+    { id: 'gemini-2.0-flash', name: 'Google Gemini 2.0 Flash', description: '2세대 모델', endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent', model: 'gemini-2.0-flash' },
+    { id: 'openai-gpt4o', name: 'OpenAI GPT-4o', description: '4세대 최고 성능', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o' },
+    { id: 'openai-gpt4o-mini', name: 'OpenAI GPT-4o-mini', description: '4세대 경량 모델', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' },
+  ];
+
+  // AI API 호출 함수
+  const callAIAPI = async (prompt: string): Promise<string> => {
+    const provider = aiProviders.find(p => p.id === selectedAI);
+    if (!provider || provider.id === 'none') {
+      throw new Error('AI 제공자가 선택되지 않았습니다.');
+    }
+
+    if (!apiKey.trim()) {
+      throw new Error('API 키를 입력해주세요.');
+    }
+
+    try {
+      if (provider.id.startsWith('openai-')) {
+        // OpenAI API 호출
+        const response = await fetch(provider.endpoint!, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: provider.model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.7,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`OpenAI API 오류: ${errorData.error?.message || response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.choices[0]?.message?.content || '';
+      } else if (provider.id.startsWith('gemini-')) {
+        // Google Gemini API 호출
+        const response = await fetch(`${provider.endpoint}?key=${apiKey}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: prompt }]
+            }]
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Gemini API 오류: ${errorData.error?.message || response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('AI API 호출 중 오류가 발생했습니다.');
+    }
+
+    return '';
+  };
+
+  // AI를 이용한 번역 생성
+  const generateTranslationWithAI = async () => {
+    if (selectedAI === 'none') {
+      setMessage({ type: 'info', text: 'AI를 사용하려면 AI 제공자를 선택하고 API 키를 입력해주세요.' });
+      setTimeout(() => setMessage(null), 5000);
+      return;
+    }
+
+    if (!englishText.trim()) {
+      setMessage({ type: 'error', text: '영어 지문을 입력해주세요.' });
+      setTimeout(() => setMessage(null), 5000);
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const prompt = `다음 영어 지문을 한국어로 번역해주세요. 각 문장을 정확하게 번역하되, 문장 구분을 유지해주세요:\n\n${englishText}`;
+      const translation = await callAIAPI(prompt);
+      setKoreanText(translation);
+      setMessage({ type: 'success', text: 'AI 번역이 완료되었습니다!' });
+      setTimeout(() => setMessage(null), 5000);
+    } catch (error) {
+      setMessage({ 
+        type: 'error', 
+        text: error instanceof Error ? error.message : 'AI 번역 중 오류가 발생했습니다.' 
+      });
+      setTimeout(() => setMessage(null), 5000);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   // 문장 파싱 함수
   const parseSentences = (text: string): string[] => {
@@ -522,6 +646,22 @@ export default function Home() {
           border: 1px solid #bee5eb;
         }
 
+        .api-select-group {
+          max-height: 300px;
+          overflow-y: auto;
+          border: 1px solid #e0e0e0;
+          border-radius: 4px;
+          padding: 8px;
+        }
+
+        .api-option {
+          transition: background-color 0.2s;
+        }
+
+        .api-option:hover {
+          background-color: #f5f5f5 !important;
+        }
+
         @media (max-width: 1200px) {
           .container {
             flex-direction: column;
@@ -610,6 +750,61 @@ export default function Home() {
               placeholder="예: 고등 필수 지문"
             />
           </div>
+
+          <div className="form-group">
+            <label>AI 번역 도우미</label>
+            <div className="api-select-group" style={{ marginTop: '8px' }}>
+              {aiProviders.map((provider) => (
+                <label key={provider.id} className="api-option" style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '8px',
+                  marginBottom: '4px',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  backgroundColor: selectedAI === provider.id ? '#e3f2fd' : 'white',
+                }}>
+                  <input
+                    type="radio"
+                    name="api-provider"
+                    value={provider.id}
+                    checked={selectedAI === provider.id}
+                    onChange={(e) => setSelectedAI(e.target.value)}
+                    style={{ marginRight: '8px' }}
+                  />
+                  <div>
+                    <strong>{provider.name}</strong>
+                    {provider.description && (
+                      <span style={{ fontSize: '0.85em', color: '#666', marginLeft: '8px' }}>
+                        - {provider.description}
+                      </span>
+                    )}
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {selectedAI !== 'none' && (
+            <div className="form-group">
+              <label htmlFor="apiKey">API 키</label>
+              <input
+                type="password"
+                id="apiKey"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="API 키를 입력하세요"
+              />
+              <Button
+                onClick={generateTranslationWithAI}
+                disabled={isProcessing || !apiKey.trim()}
+                className="bg-purple-500 hover:bg-purple-600 text-white mt-2 w-full disabled:opacity-50"
+              >
+                {isProcessing ? 'AI 번역 중...' : 'AI로 한국어 번역 생성'}
+              </Button>
+            </div>
+          )}
 
           <div className="form-group">
             <label htmlFor="templateType">학습지 유형 선택</label>
